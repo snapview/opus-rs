@@ -17,6 +17,7 @@ extern crate libc;
 
 use std::ffi::CStr;
 use std::marker::PhantomData;
+use std::ptr::null;
 
 use libc::c_int;
 
@@ -124,6 +125,15 @@ pub enum Bitrate {
 	Max,
 	/// Default bitrate decided by the encoder (not recommended).
 	Auto,
+}
+
+/// Control FEC decoding.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum DecodeFec {
+	/// Do not use forward error correction.
+	No = 0,
+	/// Use forward error correction.
+	Yes = 1,
 }
 
 /// Get the libopus version string.
@@ -314,9 +324,19 @@ impl Decoder {
 	}
 
 	/// Decode an Opus packet.
-	pub fn decode(&mut self, input: &[u8], output: &mut [i16], fec: bool) -> Result<usize> {
+	///
+	/// To recover a lost packet, use None for the input.
+	/// Size of the output buffer must not be smaller than the one used for the encoding.
+	/// The size of a 120 ms equivalent is enough to decode any packet.
+	/// For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.
+	pub fn decode(&mut self, input: Option<&[u8]>, output: &mut [i16], fec: DecodeFec) -> Result<usize> {
+		let (bp, bl) = if let Some(buf) = input {
+			(buf.as_ptr(), buf.len() as c_int)
+		} else {
+			(null(), 0)
+		};
 		let len = unsafe { ffi::opus_decode(self.ptr,
-			input.as_ptr(), input.len() as c_int,
+			bp, bl,
 			output.as_mut_ptr(), output.len() as c_int / self.channels as c_int,
 			fec as c_int) };
 		try!(check("opus_decode", len));
@@ -324,9 +344,19 @@ impl Decoder {
 	}
 
 	/// Decode an Opus packet with floating point output.
-	pub fn decode_float(&mut self, input: &[u8], output: &mut [f32], fec: bool) -> Result<usize> {
+	///
+	/// To recover a lost packet, use None for the input.
+	/// Size of the output buffer must not be smaller than the one used for the encoding.
+	/// The size of a 120 ms equivalent is enough to decode any packet.
+	/// For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.
+	pub fn decode_float(&mut self, input: Option<&[u8]>, output: &mut [f32], fec: DecodeFec) -> Result<usize> {
+		let (bp, bl) = if let Some(buf) = input {
+			(buf.as_ptr(), buf.len() as c_int)
+		} else {
+			(null(), 0)
+		};
 		let len = unsafe { ffi::opus_decode_float(self.ptr,
-			input.as_ptr(), input.len() as c_int,
+			bp, bl,
 			output.as_mut_ptr(), output.len() as c_int / self.channels as c_int,
 			fec as c_int) };
 		try!(check("opus_decode_float", len));
